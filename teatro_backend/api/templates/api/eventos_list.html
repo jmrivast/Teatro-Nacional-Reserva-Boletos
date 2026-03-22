@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cartelera | Backend Django</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #faf7f2;
+            color: #1a1a1a;
+        }
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 40px 24px 56px;
+        }
+        .actions {
+            margin-bottom: 24px;
+        }
+        .actions a {
+            color: #b12024;
+            text-decoration: none;
+            font-weight: 700;
+            margin-right: 16px;
+        }
+        .actions a:hover {
+            text-decoration: underline;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+        }
+        th,
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid #ece7de;
+            text-align: left;
+        }
+        th {
+            background: #b12024;
+            color: #ffffff;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        .empty {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Cartelera de Eventos</h1>
+        <p>Vista basica del backend en Django para comprobar que la aplicacion puede listar eventos desde la base de datos.</p>
+
+        <div class="actions">
+            <a href="/">Frontend</a>
+            <a href="/backend/">Inicio backend</a>
+            <a href="/api/eventos/">Ver JSON</a>
+            <a href="/admin/">Ir al admin</a>
+        </div>
+
+        {% if eventos %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Titulo</th>
+                        <th>Categoria</th>
+                        <th>Fecha</th>
+                        <th>Hora</th>
+                        <th>Precio</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for evento in eventos %}
+                        <tr>
+                            <td>{{ evento.titulo }}</td>
+                            <td>{{ evento.get_categoria_display }}</td>
+                            <td>{{ evento.fecha|date:"d/m/Y" }}</td>
+                            <td>{{ evento.hora|time:"H:i" }}</td>
+                            <td>RD$ {{ evento.precio }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty">
+                <p>No hay eventos publicados todavia. Puedes crearlos desde el panel de administracion de Django.</p>
+            </div>
+        {% endif %}
+    </main>
+</body>
+</html>

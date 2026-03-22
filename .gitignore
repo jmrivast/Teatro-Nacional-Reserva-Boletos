@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.sqlite3
+.env
+.vscode/
+teatro_backend/staticfiles/
+teatro_backend/.git_backup/
