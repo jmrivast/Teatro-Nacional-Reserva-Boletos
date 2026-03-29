@@ -64,6 +64,7 @@ class Reserva(models.Model):
         max_length=12,
         editable=False,
         default=generar_codigo_reserva,
+        unique=True,
     )
     asientos = models.CharField(
         max_length=255,
