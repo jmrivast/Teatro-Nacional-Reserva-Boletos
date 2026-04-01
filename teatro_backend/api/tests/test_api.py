@@ -68,6 +68,25 @@ class EventoApiTests(TestCase):
         self.assertEqual(payload["title"], "Gala Sinfonica")
         self.assertTrue(payload["published"])
 
+    def test_api_serializa_evento_sin_html_peligroso(self):
+        fecha_base = timezone.localdate() + timedelta(days=40)
+        evento = Evento.objects.create(
+            titulo='<img src=x onerror=alert(1)> Gran <b>Concierto</b>',
+            descripcion='<script>alert("x")</script><b>Temporada</b> sinfonica',
+            fecha=fecha_base,
+            hora=time(20, 0),
+            precio=Decimal("2100.00"),
+            categoria=Evento.Categoria.CONCIERTO,
+            publicado=True,
+        )
+
+        response = self.client.get(reverse("detalle_evento_api", args=[evento.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["evento"]
+        self.assertEqual(payload["title"], "Gran Concierto")
+        self.assertEqual(payload["description"], "Temporada sinfonica")
+
     def test_api_evento_oculto_solo_es_visible_para_staff(self):
         evento_oculto = Evento.objects.get(titulo="Evento Oculto")
 
@@ -198,6 +217,25 @@ class EventoApiTests(TestCase):
         session_response = self.client.get(reverse("auth_session_api"))
         self.assertEqual(session_response.status_code, 200)
         self.assertEqual(session_response.json()["usuario"]["email"], "laura@example.com")
+
+    def test_api_registro_sanea_nombre_malicioso_para_evitar_xss(self):
+        response = self.client.post(
+            reverse("auth_register_api"),
+            data=json.dumps(
+                {
+                    "name": '<script>alert("x")</script> Laura <b>Martinez</b>',
+                    "email": "xss@example.com",
+                    "password": "ClaveSegura123!",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+        usuario = get_user_model().objects.get(email="xss@example.com")
+        self.assertEqual(usuario.first_name, "Laura Martinez")
+        self.assertEqual(response.json()["usuario"]["name"], "Laura Martinez")
 
     def test_api_rechaza_registro_sin_token_csrf(self):
         client = Client(enforce_csrf_checks=True)

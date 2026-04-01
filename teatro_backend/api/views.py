@@ -10,6 +10,7 @@ from django.http import HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_time
+from django.utils.html import strip_tags
 from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_http_methods
 
@@ -31,6 +32,9 @@ MESES = (
     "diciembre",
 )
 ASIENTO_REGEX = re.compile(r"^[A-F](?:[1-9]|1[0-2])$")
+SCRIPT_STYLE_REGEX = re.compile(r"(?is)<(script|style).*?>.*?</\1>")
+CONTROL_CHAR_REGEX = re.compile(r"[\x00-\x08\x0B-\x1F\x7F]+")
+MULTISPACE_REGEX = re.compile(r"\s+")
 HTTP_ALLOW_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 EVENTO_CATEGORIAS = {value: value for value, _ in Evento.Categoria.choices}
 EVENTO_CATEGORIAS.update(
@@ -66,7 +70,9 @@ def _formatear_hora(hora):
 def _json_response(payload, status=200):
     response = JsonResponse(payload, status=status)
     response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response["Access-Control-Allow-Headers"] = (
+        "Content-Type, Authorization, X-CSRFToken, X-Requested-With"
+    )
     response["Access-Control-Allow-Methods"] = HTTP_ALLOW_METHODS
     return response
 
@@ -74,22 +80,51 @@ def _json_response(payload, status=200):
 def _empty_response(status=204):
     response = HttpResponse(status=status)
     response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response["Access-Control-Allow-Headers"] = (
+        "Content-Type, Authorization, X-CSRFToken, X-Requested-With"
+    )
     response["Access-Control-Allow-Methods"] = HTTP_ALLOW_METHODS
     return response
 
 
+def _limpiar_texto_plano(valor, max_length=None, fallback=""):
+    texto = str(valor if valor is not None else fallback)
+    texto = SCRIPT_STYLE_REGEX.sub(" ", texto)
+    texto = strip_tags(texto)
+    texto = CONTROL_CHAR_REGEX.sub(" ", texto)
+    texto = MULTISPACE_REGEX.sub(" ", texto).strip()
+
+    if max_length is not None:
+        texto = texto[:max_length].strip()
+
+    return texto
+
+
+def _normalizar_imagen(valor):
+    imagen = str(valor or "").strip()
+    if not imagen:
+        return None
+
+    if imagen.startswith("/") or imagen.lower().startswith(("http://", "https://")):
+        return imagen
+
+    return None
+
+
 def _serializar_evento(evento):
-    categoria = evento.get_categoria_display()
+    titulo = _limpiar_texto_plano(evento.titulo, max_length=200, fallback="Evento")
+    descripcion = _limpiar_texto_plano(evento.descripcion)
+    categoria = _limpiar_texto_plano(evento.get_categoria_display(), max_length=50)
     hora = evento.hora.strftime("%H:%M")
+    imagen = _normalizar_imagen(evento.imagen)
 
     return {
         "id": evento.id,
-        "slug": slugify(evento.titulo),
-        "titulo": evento.titulo,
-        "title": evento.titulo,
-        "descripcion": evento.descripcion,
-        "description": evento.descripcion,
+        "slug": slugify(titulo),
+        "titulo": titulo,
+        "title": titulo,
+        "descripcion": descripcion,
+        "description": descripcion,
         "fecha": evento.fecha.isoformat(),
         "date": evento.fecha.isoformat(),
         "date_label": _formatear_fecha(evento.fecha),
@@ -99,8 +134,8 @@ def _serializar_evento(evento):
         "precio": float(evento.precio),
         "price": float(evento.precio),
         "price_label": f"RD$ {evento.precio:,.2f}",
-        "imagen": evento.imagen,
-        "image": evento.imagen,
+        "imagen": imagen,
+        "image": imagen,
         "categoria": categoria,
         "category": categoria,
         "categoria_codigo": evento.categoria,
@@ -145,7 +180,13 @@ def _usuario_es_staff(usuario):
 
 
 def _serializar_usuario(usuario):
-    nombre = usuario.first_name or usuario.get_username()
+    username = _limpiar_texto_plano(usuario.get_username(), max_length=150, fallback="usuario")
+    nombre = _limpiar_texto_plano(
+        usuario.first_name or username,
+        max_length=150,
+        fallback="Usuario",
+    )
+    email = _limpiar_texto_plano(usuario.email, max_length=254)
     es_staff = _usuario_es_staff(usuario)
     permisos = ["reservas:crear", "reservas:leer"]
 
@@ -154,8 +195,8 @@ def _serializar_usuario(usuario):
 
     return {
         "id": usuario.id,
-        "username": usuario.get_username(),
-        "email": usuario.email,
+        "username": username,
+        "email": email,
         "name": nombre,
         "nombre": nombre,
         "role": "admin" if es_staff else "cliente",
@@ -211,12 +252,13 @@ def _buscar_valor(payload, *keys):
 
 def _obtener_usuario(nombre, email):
     User = get_user_model()
-    email_normalizado = email.strip().lower()
+    nombre_limpio = _limpiar_texto_plano(nombre, max_length=150)
+    email_normalizado = _limpiar_texto_plano(email, max_length=254).lower()
     usuario = User.objects.filter(email__iexact=email_normalizado).first()
 
     if usuario:
-        if nombre and not usuario.first_name:
-            usuario.first_name = nombre[:150]
+        if nombre_limpio and not usuario.first_name:
+            usuario.first_name = nombre_limpio[:150]
             usuario.save(update_fields=["first_name"])
         return usuario
 
@@ -231,13 +273,14 @@ def _obtener_usuario(nombre, email):
     return User.objects.create_user(
         username=username,
         email=email_normalizado,
-        first_name=(nombre or username)[:150],
+        first_name=(nombre_limpio or username)[:150],
     )
 
 
 def _buscar_usuario_por_email(email):
     User = get_user_model()
-    return User.objects.filter(email__iexact=email.strip().lower()).first()
+    email_normalizado = _limpiar_texto_plano(email, max_length=254).lower()
+    return User.objects.filter(email__iexact=email_normalizado).first()
 
 
 def _obtener_asientos_invalidos(asientos):
@@ -336,7 +379,7 @@ def _validar_payload_evento(payload, partial=False):
         if not partial:
             errores["titulo"] = ["Este campo es obligatorio."]
     else:
-        titulo = str(titulo).strip()
+        titulo = _limpiar_texto_plano(titulo, max_length=200)
         if not titulo:
             errores["titulo"] = ["Debes indicar un titulo para el evento."]
         else:
@@ -347,7 +390,7 @@ def _validar_payload_evento(payload, partial=False):
         if not partial:
             errores["descripcion"] = ["Este campo es obligatorio."]
     else:
-        descripcion = str(descripcion).strip()
+        descripcion = _limpiar_texto_plano(descripcion)
         if not descripcion:
             errores["descripcion"] = ["Debes indicar una descripcion."]
         else:
@@ -406,8 +449,14 @@ def _validar_payload_evento(payload, partial=False):
 
     imagen_valor = _buscar_valor(payload, "imagen", "image")
     if imagen_valor is not MISSING:
-        imagen = str(imagen_valor).strip()
-        datos["imagen"] = imagen or None
+        imagen_texto = str(imagen_valor or "").strip()
+        imagen = _normalizar_imagen(imagen_texto)
+        if imagen_texto and not imagen:
+            errores["imagen"] = [
+                "La imagen debe usar una URL segura http(s) o una ruta relativa local."
+            ]
+        else:
+            datos["imagen"] = imagen
     elif not partial:
         datos["imagen"] = None
 
@@ -621,8 +670,8 @@ def auth_register_api(request):
     if payload is None:
         return _json_response({"mensaje": "El cuerpo JSON no es valido."}, status=400)
 
-    nombre = str(payload.get("nombre") or payload.get("name") or "").strip()
-    email = str(payload.get("email") or "").strip().lower()
+    nombre = _limpiar_texto_plano(payload.get("nombre") or payload.get("name"), max_length=150)
+    email = _limpiar_texto_plano(payload.get("email"), max_length=254).lower()
     password = str(payload.get("password") or "").strip()
 
     if not nombre or not email or not password:
@@ -679,7 +728,7 @@ def auth_login_api(request):
     if payload is None:
         return _json_response({"mensaje": "El cuerpo JSON no es valido."}, status=400)
 
-    email = str(payload.get("email") or "").strip().lower()
+    email = _limpiar_texto_plano(payload.get("email"), max_length=254).lower()
     password = str(payload.get("password") or "").strip()
 
     if not email or not password:
