@@ -24,6 +24,6 @@ urlpatterns = [
     path("", FrontendAppView.as_view(), name="inicio"),
     path("backend/", api_views.inicio_backend, name="inicio_backend"),
     path("eventos/", api_views.eventos_panel, name="eventos_panel"),
-    path("papasfritas/", admin.site.urls),
+    path("admin/", admin.site.urls),
     path("api/", include("api.urls")),
 ]
