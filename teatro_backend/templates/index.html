@@ -1,0 +1,74 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teatro Nacional Eduardo Brito</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: '#b12024',
+                            light: '#d62d31',
+                            dark: '#8c191c'
+                        },
+                        danger: '#f87171'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="flex flex-col min-h-screen" data-fallback-image="{% static 'img/teatro-nacional-app.png' %}">
+    <div class="bg-setup"></div>
+    <div class="bg-overlay"></div>
+
+    <header class="fixed top-0 w-full z-50 bg-black/50 backdrop-blur-md border-b border-white/10 transition-all">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex justify-between items-center">
+            <a href="#home" class="flex items-center gap-3 shrink-0">
+                <img src="{% static 'img/LOGO-TNEB-Horizontal_TNEB-Horizontal-ROJO-1.png' %}" alt="Teatro Nacional Eduardo Brito" class="w-auto h-[125px] object-contain">
+            </a>
+
+            <nav class="hidden md:flex items-center gap-6" id="desktop-nav">
+                <a href="#home" class="text-sm font-medium text-white/80 hover:text-primary-light transition-colors">Inicio</a>
+                <a href="#events" class="text-sm font-medium text-white/80 hover:text-primary-light transition-colors">Cartelera</a>
+
+                <div id="auth-actions" class="flex items-center gap-4 pl-6 border-l border-white/20"></div>
+            </nav>
+
+            <button class="md:hidden text-white hover:text-primary-light p-2" id="mobile-menu-btn" aria-label="Abrir Menu">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+            </button>
+        </div>
+
+        <div class="md:hidden hidden bg-black/95 border-b border-white/10 absolute w-full left-0 top-20 shadow-2xl" id="mobile-nav">
+            <div class="px-4 pt-2 pb-6 space-y-4">
+                <a href="#home" class="block text-base font-medium text-white/80 hover:text-primary-light mobile-link">Inicio</a>
+                <a href="#events" class="block text-base font-medium text-white/80 hover:text-primary-light mobile-link">Cartelera</a>
+
+                <div id="mobile-auth-actions" class="pt-4 border-t border-white/20 flex flex-col gap-3"></div>
+            </div>
+        </div>
+    </header>
+
+    <main id="app-content" class="flex-1 relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-20 pb-32 md:pb-8"></main>
+
+    <footer class="relative z-0 bg-black/80 border-t border-white/10 py-8 text-center text-white/50 text-sm mt-auto">
+        <p>&copy; <span id="current-year"></span> Teatro Nacional Eduardo Brito. Todos los derechos reservados.</p>
+    </footer>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="{% static 'js/app.js' %}"></script>
+    <script>
+        document.getElementById('current-year').textContent = new Date().getFullYear();
+    </script>
+</body>
+</html>

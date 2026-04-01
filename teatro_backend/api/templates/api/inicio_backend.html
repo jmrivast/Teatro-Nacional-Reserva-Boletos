@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backend | Teatro Nacional Eduardo Brito</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #111111;
+            color: #f5f5f5;
+        }
+        main {
+            max-width: 920px;
+            margin: 0 auto;
+            padding: 48px 24px 64px;
+        }
+        .card {
+            background: #1a1a1a;
+            border: 1px solid #2b2b2b;
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+        a {
+            color: #d62d31;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .stats {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: #2a1516;
+            color: #ffd7d8;
+            font-weight: 700;
+        }
+        ul {
+            line-height: 1.8;
+            padding-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Backend Base del Teatro Nacional Eduardo Brito</h1>
+        <p>Este servidor Django maneja la logica basica del proyecto, el panel administrativo y la API para listar eventos.</p>
+        <div class="stats">Eventos publicados: {{ total_eventos }}</div>
+
+        <section class="card">
+            <h2>Rutas principales</h2>
+            <ul>
+                <li><a href="/">/</a> frontend principal con JavaScript</li>
+                <li><a href="/backend/">/backend/</a> resumen del backend</li>
+                <li><a href="/eventos/">/eventos/</a> lista HTML de eventos</li>
+                <li><a href="/api/eventos/">/api/eventos/</a> listado JSON para JavaScript</li>
+                <li><a href="/admin/">/admin/</a> panel de administracion de Django</li>
+            </ul>
+        </section>
+
+        <section class="card">
+            <h2>Base de datos</h2>
+            <p>Esta entrega usa SQLite, la base de datos integrada de Django, para trabajar con usuarios, eventos y reservas sin depender de MySQL.</p>
+        </section>
+    </main>
+</body>
+</html>
