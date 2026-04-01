@@ -65,6 +65,8 @@ const initialLoadingHtml = `
         Cargando cartelera del Teatro Nacional...
     </div>
 `;
+const mutationHttpMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const allowedImageProtocols = new Set(['http:', 'https:']);
 
 let eventsData = fallbackEventsData.map((event) => normalizeEvent(event));
 let appConfig = normalizeAppConfig(fallbackAppConfig);
@@ -307,8 +309,8 @@ function clearIntegrationNotice(key) {
 function setIntegrationNotice(key, notice) {
     integrationNotices[key] = {
         type: notice.type || 'info',
-        title: notice.title || 'Aviso',
-        message: notice.message || ''
+        title: normalizePlainText(notice.title, 'Aviso'),
+        message: normalizePlainText(notice.message, '')
     };
 }
 
@@ -328,8 +330,8 @@ function clearSeatAvailabilityNotice(eventId) {
 function setSeatAvailabilityNotice(eventId, notice) {
     integrationNotices.seatAvailabilityByEvent[String(eventId)] = {
         type: notice.type || 'info',
-        title: notice.title || 'Aviso',
-        message: notice.message || ''
+        title: normalizePlainText(notice.title, 'Aviso'),
+        message: normalizePlainText(notice.message, '')
     };
 }
 
@@ -341,13 +343,138 @@ function getSeatAvailabilityNotice(eventId) {
     };
 }
 
+function normalizePlainText(value, fallback = '') {
+    if (value === null || value === undefined) {
+        return fallback;
+    }
+
+    const normalized = String(value)
+        .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/[\u0000-\u001F\u007F]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    return normalized || fallback;
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/`/g, '&#96;');
+}
+
+function safeText(value, fallback = '') {
+    return escapeHtml(normalizePlainText(value, fallback));
+}
+
+function truncatePlainText(value, maxLength) {
+    const text = normalizePlainText(value);
+    if (!maxLength || text.length <= maxLength) {
+        return text;
+    }
+
+    return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
+}
+
+function safeInitial(value, fallback = 'U') {
+    const text = normalizePlainText(value, fallback);
+    return escapeHtml((text.charAt(0) || fallback).toUpperCase());
+}
+
+function safeHashSegment(value) {
+    return encodeURIComponent(normalizePlainText(value));
+}
+
+function normalizeImageUrl(value, fallback = localFallbackImage) {
+    const candidate = normalizePlainText(value, fallback);
+    const fallbackValue = normalizePlainText(fallback, 'teatro nacional app.png');
+
+    try {
+        const parsed = new URL(candidate, window.location.origin);
+        if (parsed.origin === window.location.origin || allowedImageProtocols.has(parsed.protocol)) {
+            return parsed.toString();
+        }
+    } catch (error) {
+        // Si la URL no es valida, usamos la imagen segura de respaldo.
+    }
+
+    return fallbackValue;
+}
+
+function sanitizeImageUrl(value, fallback = localFallbackImage) {
+    return escapeHtml(normalizeImageUrl(value, fallback));
+}
+
+function getCookie(name) {
+    const cookies = document.cookie ? document.cookie.split(';') : [];
+
+    for (const cookie of cookies) {
+        const [cookieName, ...cookieValue] = cookie.trim().split('=');
+        if (cookieName === name) {
+            return decodeURIComponent(cookieValue.join('='));
+        }
+    }
+
+    return '';
+}
+
+function getCsrfToken() {
+    return getCookie('csrftoken');
+}
+
+function isSameOriginUrl(url) {
+    try {
+        return new URL(url, window.location.origin).origin === window.location.origin;
+    } catch (error) {
+        return false;
+    }
+}
+
+function buildRequestOptions(url, options = {}) {
+    const method = String(options.method || 'GET').toUpperCase();
+    const headers = new Headers(options.headers || {});
+    const requestUrl = buildApiUrl(url).toString();
+
+    if (isSameOriginUrl(requestUrl) && mutationHttpMethods.has(method)) {
+        const csrfToken = getCsrfToken();
+
+        if (csrfToken && !headers.has('X-CSRFToken')) {
+            headers.set('X-CSRFToken', csrfToken);
+        }
+
+        if (!headers.has('X-Requested-With')) {
+            headers.set('X-Requested-With', 'XMLHttpRequest');
+        }
+    }
+
+    return {
+        ...options,
+        method: method,
+        headers: headers,
+        credentials: options.credentials ?? (isSameOriginUrl(requestUrl) ? 'same-origin' : 'omit')
+    };
+}
+
 function normalizeAppConfig(config) {
     const seatMap = config.seatMap ?? config.seat_map ?? {};
-    const rows = Array.isArray(seatMap.rows) ? seatMap.rows : fallbackAppConfig.seatMap.rows;
+    const rows = Array.isArray(seatMap.rows)
+        ? seatMap.rows
+            .map((row) => normalizePlainText(row).toUpperCase())
+            .filter((row) => /^[A-Z0-9]+$/.test(row))
+        : fallbackAppConfig.seatMap.rows;
     const columns = Number(seatMap.columns ?? fallbackAppConfig.seatMap.columns);
 
     return {
-        venueName: config.venueName ?? config.venue_name ?? fallbackAppConfig.venueName,
+        venueName: normalizePlainText(
+            config.venueName ?? config.venue_name ?? fallbackAppConfig.venueName,
+            fallbackAppConfig.venueName
+        ),
         seatMap: {
             rows: rows.length > 0 ? rows : fallbackAppConfig.seatMap.rows,
             columns: Number.isInteger(columns) && columns > 0 ? columns : fallbackAppConfig.seatMap.columns
@@ -364,8 +491,22 @@ function buildReservationQrUrl(reservationId) {
 }
 
 async function requestJson(url, options = {}) {
-    const response = await fetch(url, options);
-    const payload = await response.json().catch(() => ({}));
+    const requestUrl = buildApiUrl(url).toString();
+    const requestOptions = buildRequestOptions(requestUrl, options);
+    const response = await fetch(requestUrl, requestOptions);
+    let payload = await response.json().catch(() => ({}));
+
+    if (
+        response.status === 403
+        && mutationHttpMethods.has(requestOptions.method)
+        && isSameOriginUrl(requestUrl)
+        && !payload.mensaje
+    ) {
+        payload = {
+            ...payload,
+            mensaje: 'La verificacion CSRF fallo. Recarga la pagina e intentalo nuevamente.'
+        };
+    }
 
     return {
         response: response,
@@ -413,16 +554,16 @@ function normalizeEvent(event) {
 
     return {
         id: event.id,
-        title: event.title ?? event.titulo ?? 'Evento sin título',
+        title: normalizePlainText(event.title ?? event.titulo ?? 'Evento sin titulo', 'Evento sin titulo'),
         date: date,
-        dateLabel: event.dateLabel ?? event.date_label ?? formatDateLabel(date),
+        dateLabel: normalizePlainText(event.dateLabel ?? event.date_label ?? formatDateLabel(date), 'Fecha por confirmar'),
         time: time,
-        timeLabel: event.timeLabel ?? event.time_label ?? formatTimeLabel(time),
-        description: event.description ?? event.descripcion ?? '',
-        image: event.image ?? event.imagen ?? localFallbackImage,
+        timeLabel: normalizePlainText(event.timeLabel ?? event.time_label ?? formatTimeLabel(time), 'Hora por confirmar'),
+        description: normalizePlainText(event.description ?? event.descripcion ?? ''),
+        image: normalizeImageUrl(event.image ?? event.imagen ?? localFallbackImage),
         priceValue: priceValue,
-        priceLabel: event.priceLabel ?? event.price_label ?? formatCurrency(priceValue),
-        category: event.category ?? event.categoria ?? 'Evento cultural'
+        priceLabel: normalizePlainText(event.priceLabel ?? event.price_label ?? formatCurrency(priceValue), formatCurrency(priceValue)),
+        category: normalizePlainText(event.category ?? event.categoria ?? 'Evento cultural', 'Evento cultural')
     };
 }
 
@@ -437,24 +578,27 @@ function normalizeReservation(reservation) {
                 .filter(Boolean);
 
     return {
-        id: reservation.id ?? reservation.codigo_reserva ?? Math.random().toString(36).slice(2, 8).toUpperCase(),
+        id: normalizePlainText(
+            reservation.id ?? reservation.codigo_reserva ?? Math.random().toString(36).slice(2, 8).toUpperCase(),
+            'RESERVA'
+        ),
         event: normalizeEvent(reservation.event ?? reservation.evento ?? {}),
-        seats: seats,
+        seats: seats.map((seat) => normalizePlainText(seat).toUpperCase()).filter(Boolean),
         total: Number(reservation.total ?? reservation.total_pagado ?? 0),
         date: reservation.fecha_reserva
             ? new Date(reservation.fecha_reserva).toLocaleDateString('es-DO')
             : new Date().toLocaleDateString('es-DO'),
-        status: reservation.estado ?? 'confirmada'
+        status: normalizePlainText(reservation.estado ?? 'confirmada', 'confirmada')
     };
 }
 
 function normalizeUser(user) {
     return {
         id: user.id,
-        name: user.name ?? user.nombre ?? user.username ?? 'Usuario',
-        email: user.email ?? '',
-        username: user.username ?? '',
-        role: 'user',
+        name: normalizePlainText(user.name ?? user.nombre ?? user.username ?? 'Usuario', 'Usuario'),
+        email: normalizePlainText(user.email ?? ''),
+        username: normalizePlainText(user.username ?? ''),
+        role: normalizePlainText(user.role ?? user.rol ?? 'user', 'user'),
         reservations: []
     };
 }
@@ -789,9 +933,13 @@ function createBookingSummaryHtml(selectedSeats) {
         return emptyBookingSummaryText;
     }
 
+    const safeSeats = selectedSeats
+        .map((seat) => safeText(String(seat).toUpperCase()))
+        .join(', ');
+
     return `
         ${selectedSeats.length} boleto(s): 
-        <span class="text-primary-light font-bold Tracking-wider">${selectedSeats.join(', ')}</span>
+        <span class="text-primary-light font-bold Tracking-wider">${safeSeats}</span>
     `;
 }
 
@@ -842,6 +990,8 @@ function createInlineStatusCard(title, message, options = {}) {
     const iconSizeClass = compact ? 'w-5 h-5' : 'w-6 h-6';
     const titleClass = compact ? 'text-base' : 'text-lg';
     const messageClass = compact ? 'text-sm' : 'text-base';
+    const safeTitle = safeText(title, 'Aviso');
+    const safeMessage = safeText(message);
 
     return `
         <div class="glass-card border ${variant.borderClass} ${paddingClass} shadow-xl">
@@ -850,8 +1000,8 @@ function createInlineStatusCard(title, message, options = {}) {
                     ${variant.iconMarkup.replace('w-8 h-8', iconSizeClass)}
                 </div>
                 <div class="min-w-0">
-                    <h3 class="${titleClass} font-bold text-white mb-1">${title}</h3>
-                    <p class="${messageClass} text-white/70 leading-relaxed">${message}</p>
+                    <h3 class="${titleClass} font-bold text-white mb-1">${safeTitle}</h3>
+                    <p class="${messageClass} text-white/70 leading-relaxed">${safeMessage}</p>
                 </div>
             </div>
         </div>
@@ -922,6 +1072,8 @@ function updateEventDetailNotices(eventId, options = {}) {
 
 function createPurchaseModalHtml(event, reservation) {
     const variant = getModalVariantConfig('success');
+    const safeEventTitle = safeText(event.title, 'Evento');
+    const safeSeats = reservation.seats.map((seat) => safeText(seat)).join(', ');
 
     return `
         <div id="purchase-modal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.3s_ease-in-out]">
@@ -930,12 +1082,12 @@ function createPurchaseModalHtml(event, reservation) {
                     ${variant.iconMarkup.replace('w-8 h-8', 'w-10 h-10')}
                 </div>
                 <h3 class="text-3xl font-bold text-white mb-2 tracking-wide text-center">¡Reserva Confirmada!</h3>
-                <p class="text-white/70 text-center mb-8">Tus boletos para <strong class="text-white">${event.title}</strong> han sido reservados con éxito.</p>
+                <p class="text-white/70 text-center mb-8">Tus boletos para <strong class="text-white">${safeEventTitle}</strong> han sido reservados con éxito.</p>
                 
                 <div class="w-full bg-[#141414] rounded-xl p-5 mb-8 border border-white/5">
                     <div class="flex justify-between mb-4 mt-1">
                         <span class="text-white/50 text-base">Asientos:</span>
-                        <span class="text-primary font-bold text-lg">${reservation.seats.join(', ')}</span>
+                        <span class="text-primary font-bold text-lg">${safeSeats}</span>
                     </div>
                     <div class="flex justify-between mb-1">
                         <span class="text-white/50 text-base">Total pagado:</span>
@@ -953,9 +1105,10 @@ function createPurchaseModalHtml(event, reservation) {
 }
 
 function createAppMessageModalHtml(message, options = {}) {
-    const title = options.title || 'Aviso';
-    const buttonLabel = options.buttonLabel || 'Entendido';
+    const title = safeText(options.title || 'Aviso', 'Aviso');
+    const buttonLabel = safeText(options.buttonLabel || 'Entendido', 'Entendido');
     const variant = getModalVariantConfig(options.type || 'info');
+    const safeMessage = safeText(message);
 
     return `
         <div id="app-message-modal" class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.3s_ease-in-out]">
@@ -964,7 +1117,7 @@ function createAppMessageModalHtml(message, options = {}) {
                     ${variant.iconMarkup}
                 </div>
                 <h3 class="text-2xl font-bold text-white mb-3 tracking-wide text-center">${title}</h3>
-                <p class="text-white/70 text-center mb-8 leading-relaxed">${message}</p>
+                <p class="text-white/70 text-center mb-8 leading-relaxed">${safeMessage}</p>
                 <button id="app-message-modal-close" class="w-full ${variant.primaryButtonClass} font-medium py-3 px-4 rounded-lg transition-colors shadow-lg">${buttonLabel}</button>
             </div>
         </div>
@@ -972,10 +1125,11 @@ function createAppMessageModalHtml(message, options = {}) {
 }
 
 function createAppConfirmModalHtml(message, options = {}) {
-    const title = options.title || 'Confirmar';
-    const confirmLabel = options.confirmLabel || 'Confirmar';
-    const cancelLabel = options.cancelLabel || 'Cancelar';
+    const title = safeText(options.title || 'Confirmar', 'Confirmar');
+    const confirmLabel = safeText(options.confirmLabel || 'Confirmar', 'Confirmar');
+    const cancelLabel = safeText(options.cancelLabel || 'Cancelar', 'Cancelar');
     const variant = getModalVariantConfig(options.type || 'confirm');
+    const safeMessage = safeText(message);
 
     return `
         <div id="app-confirm-modal" class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.3s_ease-in-out]">
@@ -984,7 +1138,7 @@ function createAppConfirmModalHtml(message, options = {}) {
                     ${variant.iconMarkup}
                 </div>
                 <h3 class="text-2xl font-bold text-white mb-3 tracking-wide text-center">${title}</h3>
-                <p class="text-white/70 text-center mb-8 leading-relaxed">${message}</p>
+                <p class="text-white/70 text-center mb-8 leading-relaxed">${safeMessage}</p>
                 <div class="flex gap-4">
                     <button id="app-confirm-modal-cancel" class="flex-1 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white font-medium py-3 px-4 rounded-lg transition-colors border border-white/5">${cancelLabel}</button>
                     <button id="app-confirm-modal-confirm" class="flex-1 ${variant.primaryButtonClass} font-medium py-3 px-4 rounded-lg transition-colors shadow-lg">${confirmLabel}</button>
@@ -1058,6 +1212,14 @@ function bindPurchaseModalActions() {
 }
 
 function createEventDetailHtml(event, seatMapHtml) {
+    const safeImage = sanitizeImageUrl(event.image);
+    const safeTitle = safeText(event.title, 'Evento');
+    const safeDescription = safeText(event.description);
+    const safeDateLabel = safeText(event.dateLabel, 'Fecha por confirmar');
+    const safeTimeLabel = safeText(event.timeLabel, 'Hora por confirmar');
+    const safeCategory = safeText(event.category, 'Evento cultural');
+    const safePriceLabel = safeText(event.priceLabel, formatCurrency(event.priceValue));
+
     return `
         <div class="animate-[fadeIn_0.3s_ease-in-out] max-w-5xl mx-auto w-full pb-24 md:pb-8">
             <div class="mb-6">
@@ -1069,21 +1231,21 @@ function createEventDetailHtml(event, seatMapHtml) {
 
             <div class="glass-card rounded-2xl overflow-hidden flex flex-col md:flex-row mb-8 shadow-2xl">
                 <div class="w-full md:w-2/5 shrink-0">
-                    <img src="${event.image}" class="w-full h-64 md:h-full object-cover bg-neutral-900" alt="${event.title}" onerror="this.src='${localFallbackImage}'">
+                    <img src="${safeImage}" class="w-full h-64 md:h-full object-cover bg-neutral-900" alt="${safeTitle}" onerror="this.src='${localFallbackImage}'">
                 </div>
                 <div class="w-full md:w-3/5 p-6 md:p-8 flex flex-col justify-center">
                      <p class="text-primary-light font-medium flex items-center gap-2 mb-3 text-sm">
                          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                        ${event.dateLabel}
+                        ${safeDateLabel}
                      </p>
-                    <h2 class="text-3xl md:text-4xl font-bold mb-4 text-white">${event.title}</h2>
-                    <p class="text-lg text-white/70 leading-relaxed mb-8">${event.description}</p>
-                    <p class="text-sm text-white/50 mb-8">Hora: ${event.timeLabel} | Categoría: ${event.category}</p>
+                    <h2 class="text-3xl md:text-4xl font-bold mb-4 text-white">${safeTitle}</h2>
+                    <p class="text-lg text-white/70 leading-relaxed mb-8">${safeDescription}</p>
+                    <p class="text-sm text-white/50 mb-8">Hora: ${safeTimeLabel} | Categoría: ${safeCategory}</p>
                     
                     <div class="mt-auto pt-6 border-t border-white/10 flex justify-between items-center tracking-wide">
                          <div>
                             <span class="block text-sm text-white/50 mb-1">Precio Entradas Cajas</span>
-                            <strong class="text-2xl text-primary-light">${event.priceLabel}</strong>
+                            <strong class="text-2xl text-primary-light">${safePriceLabel}</strong>
                         </div>
                     </div>
                 </div>
@@ -1142,12 +1304,22 @@ function createEventDetailHtml(event, seatMapHtml) {
 }
 
 function createReservationCard(reservation) {
+    const safeImage = sanitizeImageUrl(reservation.event.image);
+    const safeCategory = safeText(reservation.event.category || 'OBRA DE TEATRO', 'OBRA DE TEATRO');
+    const safeTitle = safeText(reservation.event.title, 'Evento');
+    const safeDateLabel = safeText(reservation.event.dateLabel, 'Fecha por confirmar');
+    const safeTimeLabel = safeText(reservation.event.timeLabel, 'Hora por confirmar');
+    const safeVenueName = safeText(appConfig.venueName, 'Teatro Nacional Eduardo Brito');
+    const safeSeats = reservation.seats.map((seat) => safeText(seat)).join(', ');
+    const safeReservationId = safeText(reservation.id, 'RESERVA');
+    const safeQrUrl = escapeHtml(buildReservationQrUrl(reservation.id));
+
     return `
         <div class="flex flex-row bg-[#f5f1eb] rounded-2xl md:rounded-[24px] overflow-hidden shadow-[0_15px_40px_rgba(0,0,0,0.5)] md:min-h-[280px]">
             <div class="w-16 md:w-[120px] bg-black relative flex items-center justify-center shrink-0 overflow-hidden">
-                <img src="${reservation.event.image}" class="absolute inset-0 w-full h-full object-cover opacity-60" onerror="this.src='${localFallbackImage}'">
+                <img src="${safeImage}" class="absolute inset-0 w-full h-full object-cover opacity-60" onerror="this.src='${localFallbackImage}'">
                 <div class="relative z-10 w-full h-full py-4 md:px-4 flex items-center justify-center border-r-[2px] md:border-r-[3px] border-dashed border-white/40">
-                     <span class="text-primary font-black tracking-[0.2em] md:tracking-[0.35em] uppercase rotate-180 whitespace-nowrap text-[10px] md:text-sm drop-shadow-md" style="writing-mode: vertical-rl;">${reservation.event.category || 'OBRA DE TEATRO'}</span>
+                     <span class="text-primary font-black tracking-[0.2em] md:tracking-[0.35em] uppercase rotate-180 whitespace-nowrap text-[10px] md:text-sm drop-shadow-md" style="writing-mode: vertical-rl;">${safeCategory}</span>
                 </div>
             </div>
 
@@ -1155,20 +1327,20 @@ function createReservationCard(reservation) {
                 <div class="hidden md:block absolute top-0 right-0 w-16 h-16 bg-[#e1ddd7] rounded-bl-[40px] shadow-inner"></div>
 
                 <div class="relative z-10">
-                    <h4 class="text-lg md:text-2xl font-black mb-3 md:mb-5 uppercase tracking-tight text-gray-900 leading-tight pr-0 md:pr-10">${reservation.event.title}</h4>
+                    <h4 class="text-lg md:text-2xl font-black mb-3 md:mb-5 uppercase tracking-tight text-gray-900 leading-tight pr-0 md:pr-10">${safeTitle}</h4>
                     
                     <div class="space-y-2 md:space-y-3 mb-4">
                         <div class="flex items-center gap-2 md:gap-3 text-gray-700 text-xs md:text-sm">
                             <svg class="w-4 h-4 md:w-5 md:h-5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            <span class="font-medium">${reservation.event.dateLabel}</span>
+                            <span class="font-medium">${safeDateLabel}</span>
                         </div>
                         <div class="flex items-center gap-2 md:gap-3 text-gray-700 text-xs md:text-sm">
                             <svg class="w-4 h-4 md:w-5 md:h-5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <span class="font-medium">${reservation.event.timeLabel}</span>
+                            <span class="font-medium">${safeTimeLabel}</span>
                         </div>
                         <div class="flex items-center gap-2 md:gap-3 text-gray-700 text-xs md:text-sm">
                             <svg class="w-4 h-4 md:w-5 md:h-5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                            <span class="font-medium">${appConfig.venueName}</span>
+                            <span class="font-medium">${safeVenueName}</span>
                         </div>
                     </div>
                 </div>
@@ -1176,13 +1348,13 @@ function createReservationCard(reservation) {
                 <div class="border-t border-dashed border-gray-400 pt-3 md:pt-4 flex justify-between items-end gap-2 relative z-10">
                     <div>
                         <p class="text-[9px] md:text-[10px] text-gray-500 font-bold mb-0.5 md:mb-1 uppercase tracking-wider">Asientos Reservados</p>
-                        <p class="text-base md:text-xl font-black text-primary mb-1 md:mb-2 leading-none">${reservation.seats.join(', ')}</p>
+                        <p class="text-base md:text-xl font-black text-primary mb-1 md:mb-2 leading-none">${safeSeats}</p>
                         <p class="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5 md:mb-1">Total Pagado</p>
                         <p class="text-xs md:text-sm font-black text-gray-900 leading-none">${formatCurrency(reservation.total)}</p>
                     </div>
                     <div class="text-center bg-white p-1.5 md:p-2 rounded-lg md:rounded-xl shadow-sm border border-gray-200 flex flex-col items-center justify-center shrink-0">
-                        <img src="${buildReservationQrUrl(reservation.id)}" class="w-12 h-12 md:w-16 md:h-16 mb-1 mx-auto" alt="QR Code">
-                        <p class="text-[8px] md:text-[9px] text-gray-500 font-bold tracking-widest uppercase">ID: ${reservation.id}</p>
+                        <img src="${safeQrUrl}" class="w-12 h-12 md:w-16 md:h-16 mb-1 mx-auto" alt="QR Code">
+                        <p class="text-[8px] md:text-[9px] text-gray-500 font-bold tracking-widest uppercase">ID: ${safeReservationId}</p>
                     </div>
                 </div>
             </div>
@@ -1207,15 +1379,18 @@ function createEmptyReservationsHtml() {
 }
 
 function createDashboardHtml(reservationsHtml) {
+    const safeUserName = safeText(currentUser?.name, 'Usuario');
+    const safeUserInitial = safeInitial(currentUser?.name, 'U');
+
     return `
         <div class="animate-[fadeIn_0.3s_ease-in-out] max-w-5xl mx-auto pt-4 pb-12">
             <div class="flex items-center gap-4 md:gap-6 mb-8 border-b border-white/10 pb-6 md:pb-10">
                 <div class="w-12 h-12 md:w-16 md:h-16 bg-primary rounded-full flex items-center justify-center text-xl md:text-2xl font-bold text-white shadow-[0_0_20px_rgba(177,32,36,0.4)] shrink-0">
-                    ${currentUser.name.charAt(0).toUpperCase()}
+                    ${safeUserInitial}
                 </div>
                 <div>
                     <h2 class="text-2xl md:text-3xl font-bold text-white mb-0.5 md:mb-1 tracking-tight">Mis Reservas</h2>
-                    <p class="text-white/70 font-medium text-sm md:text-base">Hola, ${currentUser.name}. Aquí están tus boletos digitales.</p>
+                    <p class="text-white/70 font-medium text-sm md:text-base">Hola, ${safeUserName}. Aquí están tus boletos digitales.</p>
                 </div>
             </div>
 
@@ -1526,23 +1701,30 @@ function renderDashboard() {
 
 // Helpers
 function createEventCard(event) {
+    const safeEventHref = `#event-detail/${safeHashSegment(event.id)}`;
+    const safeImage = sanitizeImageUrl(event.image);
+    const safeTitle = safeText(event.title, 'Evento');
+    const safeDateLabel = safeText(event.dateLabel, 'Fecha por confirmar');
+    const safeCategory = safeText(event.category, 'Evento cultural');
+    const safeDescription = safeText(truncatePlainText(event.description, 85));
+
     return `
         <div class="glass-card rounded-2xl overflow-hidden transition-transform duration-300 hover:-translate-y-2 hover:shadow-[0_15px_30px_rgba(177,32,36,0.15)] hover:border-primary/40 flex flex-col h-full group">
-            <a href="#event-detail/${event.id}" class="block relative overflow-hidden shrink-0">
+            <a href="${safeEventHref}" class="block relative overflow-hidden shrink-0">
                 <div class="absolute inset-0 bg-primary/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 flex items-center justify-center">
                     <span class="bg-black/70 text-white px-4 py-2 rounded-full font-medium tracking-wide backdrop-blur-sm transform scale-90 group-hover:scale-100 transition-transform">Ver Detalles</span>
                 </div>
-                <img src="${event.image}" alt="${event.title}" class="w-full h-48 sm:h-56 object-cover bg-neutral-900 transition-transform duration-500 group-hover:scale-105" onerror="this.src='${localFallbackImage}'">
+                <img src="${safeImage}" alt="${safeTitle}" class="w-full h-48 sm:h-56 object-cover bg-neutral-900 transition-transform duration-500 group-hover:scale-105" onerror="this.src='${localFallbackImage}'">
             </a>
             <div class="p-6 flex flex-col flex-1">
                 <p class="text-primary-light font-medium text-sm flex items-center gap-2 mb-3">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                    ${event.dateLabel}
+                    ${safeDateLabel}
                 </p>
-                <h3 class="text-xl md:text-2xl font-bold mb-3 text-white leading-tight">${event.title}</h3>
-                <p class="text-white/60 text-sm mb-2">${event.category}</p>
-                <p class="text-white/60 text-sm mb-6 flex-1 leading-relaxed">${event.description.substring(0, 85)}</p>
-                <a href="#event-detail/${event.id}" class="block w-full text-center border border-white/20 group-hover:border-primary/50 group-hover:bg-primary/10 text-white font-medium py-2.5 rounded-md transition-colors mt-auto">Más Información</a>
+                <h3 class="text-xl md:text-2xl font-bold mb-3 text-white leading-tight">${safeTitle}</h3>
+                <p class="text-white/60 text-sm mb-2">${safeCategory}</p>
+                <p class="text-white/60 text-sm mb-6 flex-1 leading-relaxed">${safeDescription}</p>
+                <a href="${safeEventHref}" class="block w-full text-center border border-white/20 group-hover:border-primary/50 group-hover:bg-primary/10 text-white font-medium py-2.5 rounded-md transition-colors mt-auto">Más Información</a>
             </div>
         </div>
     `;
