@@ -3,7 +3,7 @@ from datetime import timedelta, time
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -199,6 +199,43 @@ class EventoApiTests(TestCase):
         self.assertEqual(session_response.status_code, 200)
         self.assertEqual(session_response.json()["usuario"]["email"], "laura@example.com")
 
+    def test_api_rechaza_registro_sin_token_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+
+        response = client.post(
+            reverse("auth_register_api"),
+            data=json.dumps(
+                {
+                    "name": "Registro Sin Token",
+                    "email": "registro-sin-token@example.com",
+                    "password": "ClaveSegura123!",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_api_acepta_registro_con_token_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        client.get("/")
+        csrf_token = client.cookies.get("csrftoken").value
+
+        response = client.post(
+            reverse("auth_register_api"),
+            data=json.dumps(
+                {
+                    "name": "Registro Con Token",
+                    "email": "registro-con-token@example.com",
+                    "password": "ClaveSegura123!",
+                }
+            ),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+
+        self.assertEqual(response.status_code, 201)
+
     def test_api_login_valida_credenciales_y_abre_sesion(self):
         usuario = get_user_model().objects.create_user(
             username="sofia",
@@ -303,6 +340,53 @@ class EventoApiTests(TestCase):
         data = response.json()["reserva"]
         self.assertEqual(data["seats"], ["C1", "C2"])
         self.assertEqual(data["total"], 3600.0)
+
+    def test_api_rechaza_crear_reserva_sin_token_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        usuario = get_user_model().objects.create_user(
+            username="csrf-user",
+            email="csrf-user@example.com",
+            password="clave-segura-123",
+        )
+        client.force_login(usuario)
+
+        response = client.post(
+            reverse("reservas_api"),
+            data=json.dumps(
+                {
+                    "event_id": self.evento_publicado.id,
+                    "seats": ["A1"],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_api_acepta_crear_reserva_con_token_csrf(self):
+        client = Client(enforce_csrf_checks=True)
+        usuario = get_user_model().objects.create_user(
+            username="csrf-ok",
+            email="csrf-ok@example.com",
+            password="clave-segura-123",
+        )
+        client.force_login(usuario)
+        client.get("/")
+        csrf_token = client.cookies.get("csrftoken").value
+
+        response = client.post(
+            reverse("reservas_api"),
+            data=json.dumps(
+                {
+                    "event_id": self.evento_publicado.id,
+                    "seats": ["A1", "A2"],
+                }
+            ),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+
+        self.assertEqual(response.status_code, 201)
 
     def test_api_lista_solo_reservas_del_usuario_autenticado(self):
         usuario = get_user_model().objects.create_user(

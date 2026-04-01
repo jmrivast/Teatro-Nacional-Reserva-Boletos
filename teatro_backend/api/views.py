@@ -11,7 +11,6 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_time
 from django.utils.text import slugify
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from .models import Evento, Reserva
@@ -478,7 +477,6 @@ def frontend_config_api(request):
     return _json_response(FRONTEND_CONFIG)
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def listar_eventos(request):
     if request.method == "OPTIONS":
@@ -543,7 +541,6 @@ def listar_eventos(request):
     )
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def detalle_evento_api(request, evento_id):
     if request.method == "OPTIONS":
@@ -615,7 +612,6 @@ def detalle_evento_api(request, evento_id):
     )
 
 
-@csrf_exempt
 @require_http_methods(["POST", "OPTIONS"])
 def auth_register_api(request):
     if request.method == "OPTIONS":
@@ -674,7 +670,6 @@ def auth_register_api(request):
     )
 
 
-@csrf_exempt
 @require_http_methods(["POST", "OPTIONS"])
 def auth_login_api(request):
     if request.method == "OPTIONS":
@@ -731,7 +726,6 @@ def auth_session_api(request):
     )
 
 
-@csrf_exempt
 @require_http_methods(["POST", "OPTIONS"])
 def auth_logout_api(request):
     if request.method == "OPTIONS":
@@ -741,7 +735,6 @@ def auth_logout_api(request):
     return _json_response({"mensaje": "Sesion cerrada correctamente."})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def reservas_api(request):
     if request.method == "OPTIONS":
@@ -878,7 +871,6 @@ def reservas_api(request):
     )
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PATCH", "DELETE", "OPTIONS"])
 def detalle_reserva_api(request, codigo_reserva):
     if request.method == "OPTIONS":
