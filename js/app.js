@@ -67,6 +67,14 @@ const initialLoadingHtml = `
 `;
 const mutationHttpMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const allowedImageProtocols = new Set(['http:', 'https:']);
+const focusableSelector = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+const routeTitles = {
+    home: 'Inicio',
+    events: 'Cartelera',
+    'event-detail': 'Detalle del evento',
+    login: 'Acceso de usuarios',
+    dashboard: 'Mis reservas'
+};
 
 let eventsData = fallbackEventsData.map((event) => normalizeEvent(event));
 let appConfig = normalizeAppConfig(fallbackAppConfig);
@@ -100,7 +108,108 @@ function setAppContent(html) {
 }
 
 function showInitialLoadingState() {
+    $('#app-content').attr('aria-busy', 'true');
     setAppContent(initialLoadingHtml);
+}
+
+function setMobileMenuState(isOpen) {
+    const mobileNav = $('#mobile-nav');
+    const mobileMenuButton = $('#mobile-menu-btn');
+
+    mobileNav.toggleClass('hidden', !isOpen);
+    mobileNav.attr('aria-hidden', String(!isOpen));
+    mobileMenuButton.attr('aria-expanded', String(isOpen));
+}
+
+function focusMainContent() {
+    const mainContent = document.getElementById('app-content');
+    if (!mainContent) return;
+
+    window.requestAnimationFrame(() => {
+        mainContent.focus({ preventScroll: true });
+    });
+}
+
+function announceToScreenReader(message) {
+    const announcer = $('#app-announcer');
+    if (!announcer.length) return;
+
+    announcer.text('');
+    window.setTimeout(() => {
+        announcer.text(normalizePlainText(message, 'Contenido actualizado'));
+    }, 20);
+}
+
+function updateActiveNavigation(routeName) {
+    $('a[href^="#"]').removeAttr('aria-current');
+
+    const activeRoute = routeName === 'event-detail' ? 'events' : routeName;
+    $(`a[href="#${activeRoute}"]`).attr('aria-current', 'page');
+}
+
+function updatePageMetadata(routeName, options = {}) {
+    const routeLabel = routeTitles[routeName] || routeTitles.home;
+    const detailSuffix = options.detailTitle ? ` - ${normalizePlainText(options.detailTitle, 'Evento')}` : '';
+    document.title = `Teatro Nacional Eduardo Brito | ${routeLabel}${detailSuffix}`;
+    announceToScreenReader(`${routeLabel}${detailSuffix}`);
+    updateActiveNavigation(routeName);
+}
+
+function activateModalDialog(dialogSelector, initialFocusSelector) {
+    const dialog = $(dialogSelector);
+    if (!dialog.length) return;
+    const previouslyFocusedElement = document.activeElement;
+
+    const focusableElements = dialog.find(focusableSelector).filter(':visible');
+    const firstFocusable = initialFocusSelector
+        ? dialog.find(initialFocusSelector).get(0) || focusableElements.get(0)
+        : focusableElements.get(0);
+    const lastFocusable = focusableElements.get(focusableElements.length - 1);
+
+    if (firstFocusable) {
+        firstFocusable.focus();
+    }
+
+    dialog.on('keydown.dialog', function(event) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            dialog.trigger('modal:close');
+            return;
+        }
+
+        if (event.key !== 'Tab' || !firstFocusable || !lastFocusable) {
+            return;
+        }
+
+        if (event.shiftKey && document.activeElement === firstFocusable) {
+            event.preventDefault();
+            lastFocusable.focus();
+            return;
+        }
+
+        if (!event.shiftKey && document.activeElement === lastFocusable) {
+            event.preventDefault();
+            firstFocusable.focus();
+        }
+    });
+
+    dialog.one('remove.dialog', function() {
+        dialog.off('keydown.dialog');
+
+        if (previouslyFocusedElement && typeof previouslyFocusedElement.focus === 'function') {
+            window.requestAnimationFrame(() => {
+                previouslyFocusedElement.focus({ preventScroll: true });
+            });
+        }
+    });
+}
+
+function removeDialog(dialogSelector) {
+    const dialog = $(dialogSelector);
+    if (!dialog.length) return;
+
+    dialog.triggerHandler('remove.dialog');
+    dialog.remove();
 }
 
 function bindGlobalUiEvents() {
@@ -109,11 +218,19 @@ function bindGlobalUiEvents() {
     });
 
     $('#mobile-menu-btn').on('click', function() {
-        $('#mobile-nav').toggleClass('hidden');
+        const shouldOpen = $('#mobile-nav').hasClass('hidden');
+        setMobileMenuState(shouldOpen);
     });
 
     $(document).on('click', '.mobile-link', function() {
-        $('#mobile-nav').addClass('hidden');
+        setMobileMenuState(false);
+    });
+
+    $(document).on('keydown', function(event) {
+        if (event.key === 'Escape' && !$('#mobile-nav').hasClass('hidden')) {
+            setMobileMenuState(false);
+            $('#mobile-menu-btn').trigger('focus');
+        }
     });
 }
 
@@ -147,15 +264,25 @@ function isServerRenderedSessionAvailable() {
 
 function handleRoute() {
     const { path, param } = getCurrentRoute();
+    const mainContent = $('#app-content');
 
-    $('#app-content').empty();
+    mainContent.attr('aria-busy', 'true').empty();
 
     if (routes[path]) {
         routes[path](param);
     } else {
         renderHome();
     }
+
+    setMobileMenuState(false);
+    mainContent.attr('aria-busy', 'false');
+    updatePageMetadata(routes[path] ? path : 'home', {
+        detailTitle: path === 'event-detail'
+            ? eventsData.find((event) => String(event.id) === String(param))?.title
+            : ''
+    });
     window.scrollTo(0, 0);
+    focusMainContent();
 }
 
 function getAuthenticatedDesktopNavHtml() {
@@ -221,11 +348,13 @@ function updateNavigation() {
         $('#auth-actions').html(getAuthenticatedDesktopNavHtml());
         $('#mobile-auth-actions').html(getAuthenticatedMobileNavHtml());
         bindLogoutButtons();
+        updateActiveNavigation(getCurrentRoute().path);
         return;
     }
 
     $('#auth-actions').html(getGuestDesktopNavHtml());
     $('#mobile-auth-actions').html(getGuestMobileNavHtml());
+    updateActiveNavigation(getCurrentRoute().path);
 }
 
 function formatCurrency(value) {
@@ -261,6 +390,27 @@ function formatTimeLabel(value) {
         hour: 'numeric',
         minute: '2-digit'
     });
+}
+
+function getEventStartDate(eventLike) {
+    const eventDate = normalizePlainText(eventLike?.date ?? eventLike?.fecha ?? '');
+    const eventTime = normalizePlainText(eventLike?.time ?? eventLike?.hora ?? '00:00');
+
+    if (!eventDate) {
+        return null;
+    }
+
+    const normalizedTime = /^\d{2}:\d{2}/.test(eventTime)
+        ? eventTime.slice(0, 5)
+        : '00:00';
+    const startDate = new Date(`${eventDate}T${normalizedTime}:00`);
+
+    return Number.isNaN(startDate.getTime()) ? null : startDate;
+}
+
+function isPastEvent(eventLike) {
+    const startDate = getEventStartDate(eventLike);
+    return Boolean(startDate && startDate.getTime() < Date.now());
 }
 
 function resolveApiEndpoint(endpoint) {
@@ -619,7 +769,9 @@ async function loadEvents() {
             }
 
             if (Array.isArray(payload.eventos)) {
-                eventsData = payload.eventos.map((event) => normalizeEvent(event));
+                eventsData = payload.eventos
+                    .map((event) => normalizeEvent(event))
+                    .filter((event) => !isPastEvent(event));
                 return;
             }
         } catch (error) {
@@ -912,15 +1064,16 @@ function createSeatMapHtml(bookedSeats) {
             const stateClass = isBooked
                 ? 'bg-white/10 text-white/20 cursor-not-allowed booked'
                 : 'bg-white/20 text-white/70 hover:bg-primary/80 hover:text-white cursor-pointer available';
+            const seatStatus = isBooked ? 'ocupado' : 'disponible';
 
-            seatsHtml += `<button type="button" class="${baseClass} ${stateClass}" data-seat="${seatId}" ${isBooked ? 'disabled' : ''}>${col}</button>`;
+            seatsHtml += `<button type="button" class="${baseClass} ${stateClass}" data-seat="${seatId}" aria-label="Asiento ${seatId} ${seatStatus}" aria-pressed="false" ${isBooked ? 'disabled aria-disabled="true"' : ''}>${col}</button>`;
         });
 
         seatRowsHtml += `
-            <div class="flex items-center gap-2 sm:gap-4 justify-center mb-3">
-                <span class="w-6 text-center font-bold text-white/50 text-sm">${row}</span>
-                <div class="flex gap-1 sm:gap-2">${seatsHtml}</div>
-                <span class="w-6 text-center font-bold text-white/50 text-sm">${row}</span>
+            <div class="flex items-center gap-2 sm:gap-4 justify-center mb-3" role="row" aria-label="Fila ${row}">
+                <span class="w-6 text-center font-bold text-white/50 text-sm" aria-hidden="true">${row}</span>
+                <div class="flex gap-1 sm:gap-2" role="group" aria-label="Fila ${row}">${seatsHtml}</div>
+                <span class="w-6 text-center font-bold text-white/50 text-sm" aria-hidden="true">${row}</span>
             </div>
         `;
     });
@@ -928,7 +1081,7 @@ function createSeatMapHtml(bookedSeats) {
     return seatRowsHtml;
 }
 
-function createBookingSummaryHtml(selectedSeats) {
+function createBookingSummaryHtml(selectedSeats, totalAmount = 0) {
     if (selectedSeats.length === 0) {
         return emptyBookingSummaryText;
     }
@@ -936,10 +1089,12 @@ function createBookingSummaryHtml(selectedSeats) {
     const safeSeats = selectedSeats
         .map((seat) => safeText(String(seat).toUpperCase()))
         .join(', ');
+    const safeTotal = safeText(formatCurrency(totalAmount), formatCurrency(totalAmount));
 
     return `
         ${selectedSeats.length} boleto(s): 
-        <span class="text-primary-light font-bold Tracking-wider">${safeSeats}</span>
+        <span class="text-primary-light font-bold tracking-wider">${safeSeats}</span>
+        <span class="block mt-1">Total: <span class="text-white font-semibold">${safeTotal}</span></span>
     `;
 }
 
@@ -994,7 +1149,7 @@ function createInlineStatusCard(title, message, options = {}) {
     const safeMessage = safeText(message);
 
     return `
-        <div class="glass-card border ${variant.borderClass} ${paddingClass} shadow-xl">
+        <div class="glass-card border ${variant.borderClass} ${paddingClass} shadow-xl" role="status" aria-live="polite">
             <div class="flex items-start gap-4">
                 <div class="${iconBoxClass} rounded-full border-4 ${variant.iconRingClass} ${variant.iconTextClass} ${variant.iconShadowClass} flex items-center justify-center shrink-0">
                     ${variant.iconMarkup.replace('w-8 h-8', iconSizeClass)}
@@ -1076,13 +1231,13 @@ function createPurchaseModalHtml(event, reservation) {
     const safeSeats = reservation.seats.map((seat) => safeText(seat)).join(', ');
 
     return `
-        <div id="purchase-modal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.3s_ease-in-out]">
+        <div id="purchase-modal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.3s_ease-in-out]" role="dialog" aria-modal="true" aria-labelledby="purchase-modal-title" aria-describedby="purchase-modal-description">
             <div class="bg-[#0a0a0a] border ${variant.borderClass} rounded-2xl p-8 max-w-md w-full shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col items-center">
                 <div class="w-20 h-20 rounded-full border-4 ${variant.iconRingClass} ${variant.iconTextClass} ${variant.iconShadowClass} flex items-center justify-center mb-6">
                     ${variant.iconMarkup.replace('w-8 h-8', 'w-10 h-10')}
                 </div>
-                <h3 class="text-3xl font-bold text-white mb-2 tracking-wide text-center">¡Reserva Confirmada!</h3>
-                <p class="text-white/70 text-center mb-8">Tus boletos para <strong class="text-white">${safeEventTitle}</strong> han sido reservados con éxito.</p>
+                <h3 id="purchase-modal-title" class="text-3xl font-bold text-white mb-2 tracking-wide text-center">¡Reserva Confirmada!</h3>
+                <p id="purchase-modal-description" class="text-white/70 text-center mb-8">Tus boletos para <strong class="text-white">${safeEventTitle}</strong> han sido reservados con éxito.</p>
                 
                 <div class="w-full bg-[#141414] rounded-xl p-5 mb-8 border border-white/5">
                     <div class="flex justify-between mb-4 mt-1">
@@ -1111,13 +1266,13 @@ function createAppMessageModalHtml(message, options = {}) {
     const safeMessage = safeText(message);
 
     return `
-        <div id="app-message-modal" class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.3s_ease-in-out]">
+        <div id="app-message-modal" class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.3s_ease-in-out]" role="dialog" aria-modal="true" aria-labelledby="app-message-modal-title" aria-describedby="app-message-modal-description">
             <div class="bg-[#0a0a0a] border ${variant.borderClass} rounded-2xl p-8 max-w-md w-full shadow-[0_0_50px_rgba(0,0,0,0.8)]">
                 <div class="w-16 h-16 rounded-full border-4 ${variant.iconRingClass} ${variant.iconTextClass} ${variant.iconShadowClass} flex items-center justify-center mb-6 mx-auto">
                     ${variant.iconMarkup}
                 </div>
-                <h3 class="text-2xl font-bold text-white mb-3 tracking-wide text-center">${title}</h3>
-                <p class="text-white/70 text-center mb-8 leading-relaxed">${safeMessage}</p>
+                <h3 id="app-message-modal-title" class="text-2xl font-bold text-white mb-3 tracking-wide text-center">${title}</h3>
+                <p id="app-message-modal-description" class="text-white/70 text-center mb-8 leading-relaxed">${safeMessage}</p>
                 <button id="app-message-modal-close" class="w-full ${variant.primaryButtonClass} font-medium py-3 px-4 rounded-lg transition-colors shadow-lg">${buttonLabel}</button>
             </div>
         </div>
@@ -1132,13 +1287,13 @@ function createAppConfirmModalHtml(message, options = {}) {
     const safeMessage = safeText(message);
 
     return `
-        <div id="app-confirm-modal" class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.3s_ease-in-out]">
+        <div id="app-confirm-modal" class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-[fadeIn_0.3s_ease-in-out]" role="dialog" aria-modal="true" aria-labelledby="app-confirm-modal-title" aria-describedby="app-confirm-modal-description">
             <div class="bg-[#0a0a0a] border ${variant.borderClass} rounded-2xl p-8 max-w-md w-full shadow-[0_0_50px_rgba(0,0,0,0.8)]">
                 <div class="w-16 h-16 rounded-full border-4 ${variant.iconRingClass} ${variant.iconTextClass} ${variant.iconShadowClass} flex items-center justify-center mb-6 mx-auto">
                     ${variant.iconMarkup}
                 </div>
-                <h3 class="text-2xl font-bold text-white mb-3 tracking-wide text-center">${title}</h3>
-                <p class="text-white/70 text-center mb-8 leading-relaxed">${safeMessage}</p>
+                <h3 id="app-confirm-modal-title" class="text-2xl font-bold text-white mb-3 tracking-wide text-center">${title}</h3>
+                <p id="app-confirm-modal-description" class="text-white/70 text-center mb-8 leading-relaxed">${safeMessage}</p>
                 <div class="flex gap-4">
                     <button id="app-confirm-modal-cancel" class="flex-1 bg-[#2a2a2a] hover:bg-[#3a3a3a] text-white font-medium py-3 px-4 rounded-lg transition-colors border border-white/5">${cancelLabel}</button>
                     <button id="app-confirm-modal-confirm" class="flex-1 ${variant.primaryButtonClass} font-medium py-3 px-4 rounded-lg transition-colors shadow-lg">${confirmLabel}</button>
@@ -1149,15 +1304,21 @@ function createAppConfirmModalHtml(message, options = {}) {
 }
 
 function closeAppMessageModal() {
-    $('#app-message-modal').remove();
+    removeDialog('#app-message-modal');
 }
 
 function showAppMessageModal(message, options = {}) {
     closeAppMessageModal();
     $('body').append(createAppMessageModalHtml(message, options));
+    activateModalDialog('#app-message-modal', '#app-message-modal-close');
 
     return new Promise((resolve) => {
         $('#app-message-modal-close').on('click', function() {
+            closeAppMessageModal();
+            resolve();
+        });
+
+        $('#app-message-modal').on('modal:close', function() {
             closeAppMessageModal();
             resolve();
         });
@@ -1172,12 +1333,13 @@ function showAppMessageModal(message, options = {}) {
 }
 
 function closeAppConfirmModal() {
-    $('#app-confirm-modal').remove();
+    removeDialog('#app-confirm-modal');
 }
 
 function showAppConfirmModal(message, options = {}) {
     closeAppConfirmModal();
     $('body').append(createAppConfirmModalHtml(message, options));
+    activateModalDialog('#app-confirm-modal', '#app-confirm-modal-confirm');
 
     return new Promise((resolve) => {
         $('#app-confirm-modal-cancel').on('click', function() {
@@ -1196,17 +1358,29 @@ function showAppConfirmModal(message, options = {}) {
                 resolve(false);
             }
         });
+
+        $('#app-confirm-modal').on('modal:close', function() {
+            closeAppConfirmModal();
+            resolve(false);
+        });
     });
 }
 
 function bindPurchaseModalActions() {
+    activateModalDialog('#purchase-modal', '#modal-ver-reservas');
+
     $('#modal-ver-reservas').on('click', function() {
-        $('#purchase-modal').remove();
+        removeDialog('#purchase-modal');
         window.location.hash = 'dashboard';
     });
 
     $('#modal-seguir').on('click', function() {
-        $('#purchase-modal').remove();
+        removeDialog('#purchase-modal');
+        window.location.hash = 'events';
+    });
+
+    $('#purchase-modal').on('modal:close', function() {
+        removeDialog('#purchase-modal');
         window.location.hash = 'events';
     });
 }
@@ -1231,7 +1405,7 @@ function createEventDetailHtml(event, seatMapHtml) {
 
             <div class="glass-card rounded-2xl overflow-hidden flex flex-col md:flex-row mb-8 shadow-2xl">
                 <div class="w-full md:w-2/5 shrink-0">
-                    <img src="${safeImage}" class="w-full h-64 md:h-full object-cover bg-neutral-900" alt="${safeTitle}" onerror="this.src='${localFallbackImage}'">
+                    <img src="${safeImage}" class="w-full h-64 md:h-full object-cover bg-neutral-900" alt="${safeTitle}" loading="eager" decoding="async" onerror="this.src='${localFallbackImage}'">
                 </div>
                 <div class="w-full md:w-3/5 p-6 md:p-8 flex flex-col justify-center">
                      <p class="text-primary-light font-medium flex items-center gap-2 mb-3 text-sm">
@@ -1254,19 +1428,21 @@ function createEventDetailHtml(event, seatMapHtml) {
             <div class="glass-card rounded-2xl p-4 sm:p-8 mb-8 shadow-xl">
                 <h3 class="text-2xl font-bold mb-2 text-center text-white">Selecciona tus asientos</h3>
                 <p class="text-center text-white/60 mb-6 text-sm">Haz clic en los asientos disponibles para agregarlos a tu compra.</p>
-                <div id="event-detail-notices" class="hidden space-y-4 mb-10"></div>
-                
+                <div id="event-detail-notices" class="hidden space-y-4 mb-10" role="status" aria-live="polite" aria-atomic="true"></div>
+                 
                 <div class="w-full overflow-x-auto custom-scrollbar pb-6">
-                    <div class="min-w-max mx-auto flex flex-col items-center px-4">
+                    <div class="min-w-max mx-auto flex flex-col items-center px-4" role="group" aria-labelledby="seat-map-title" aria-describedby="seat-map-description">
                         <div class="w-64 sm:w-80 h-10 bg-primary/20 border-t-2 border-x-2 border-primary rounded-t-[100px] mb-12 flex items-center justify-center shadow-[0_-10px_30px_rgba(177,32,36,0.15)] relative">
                             <span class="text-primary-light font-bold tracking-[0.2em] uppercase text-sm absolute bottom-2">Escenario</span>
                         </div>
-                        
-                        <div class="flex flex-col">
+                         
+                        <div class="flex flex-col" id="seat-map-title" role="group" aria-label="Mapa de asientos del evento">
                             ${seatMapHtml}
                         </div>
 
-                        <div class="flex flex-wrap gap-6 mt-12 justify-center bg-black/30 py-4 px-8 rounded-full border border-white/5">
+                        <p id="seat-map-description" class="sr-only">Usa el teclado o el mouse para seleccionar asientos disponibles. Los asientos ocupados no se pueden elegir.</p>
+
+                        <div class="flex flex-wrap gap-6 mt-12 justify-center bg-black/30 py-4 px-8 rounded-full border border-white/5" aria-hidden="true">
                             <div class="flex items-center gap-3">
                                 <div class="w-5 h-5 rounded-md bg-white/20"></div>
                                 <span class="text-sm font-medium text-white/70">Disponible</span>
@@ -1288,12 +1464,12 @@ function createEventDetailHtml(event, seatMapHtml) {
                 <div class="max-w-5xl mx-auto md:glass-card md:rounded-2xl md:p-6 flex flex-col sm:flex-row justify-between items-center gap-4">
                     <div class="w-full sm:w-auto text-center sm:text-left">
                         <h4 class="text-lg font-bold text-white mb-1">Resumen de Compra</h4>
-                        <div id="booking-summary" class="text-white/60 text-sm min-h-[1.5rem]">
+                        <div id="booking-summary" class="text-white/60 text-sm min-h-[1.5rem]" role="status" aria-live="polite" aria-atomic="true">
                             ${emptyBookingSummaryText}
                         </div>
                     </div>
                     
-                    <button id="btn-comprar" class="w-full sm:w-auto bg-primary hover:bg-primary-dark disabled:bg-primary/30 disabled:text-white/30 disabled:cursor-not-allowed text-white font-medium py-3 px-8 rounded-md transition-all flex items-center justify-center gap-2 shadow-lg" disabled>
+                    <button id="btn-comprar" class="w-full sm:w-auto bg-primary hover:bg-primary-dark disabled:bg-primary/30 disabled:text-white/30 disabled:cursor-not-allowed text-white font-medium py-3 px-8 rounded-md transition-all flex items-center justify-center gap-2 shadow-lg" disabled aria-disabled="true" aria-describedby="booking-summary">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"></path></svg>
                         Comprar Boletas
                     </button>
@@ -1317,7 +1493,7 @@ function createReservationCard(reservation) {
     return `
         <div class="flex flex-row bg-[#f5f1eb] rounded-2xl md:rounded-[24px] overflow-hidden shadow-[0_15px_40px_rgba(0,0,0,0.5)] md:min-h-[280px]">
             <div class="w-16 md:w-[120px] bg-black relative flex items-center justify-center shrink-0 overflow-hidden">
-                <img src="${safeImage}" class="absolute inset-0 w-full h-full object-cover opacity-60" onerror="this.src='${localFallbackImage}'">
+                <img src="${safeImage}" class="absolute inset-0 w-full h-full object-cover opacity-60" loading="lazy" decoding="async" alt="${safeTitle}" onerror="this.src='${localFallbackImage}'">
                 <div class="relative z-10 w-full h-full py-4 md:px-4 flex items-center justify-center border-r-[2px] md:border-r-[3px] border-dashed border-white/40">
                      <span class="text-primary font-black tracking-[0.2em] md:tracking-[0.35em] uppercase rotate-180 whitespace-nowrap text-[10px] md:text-sm drop-shadow-md" style="writing-mode: vertical-rl;">${safeCategory}</span>
                 </div>
@@ -1353,7 +1529,7 @@ function createReservationCard(reservation) {
                         <p class="text-xs md:text-sm font-black text-gray-900 leading-none">${formatCurrency(reservation.total)}</p>
                     </div>
                     <div class="text-center bg-white p-1.5 md:p-2 rounded-lg md:rounded-xl shadow-sm border border-gray-200 flex flex-col items-center justify-center shrink-0">
-                        <img src="${safeQrUrl}" class="w-12 h-12 md:w-16 md:h-16 mb-1 mx-auto" alt="QR Code">
+                        <img src="${safeQrUrl}" class="w-12 h-12 md:w-16 md:h-16 mb-1 mx-auto" loading="lazy" decoding="async" alt="Codigo QR de la reserva ${safeReservationId}">
                         <p class="text-[8px] md:text-[9px] text-gray-500 font-bold tracking-widest uppercase">ID: ${safeReservationId}</p>
                     </div>
                 </div>
@@ -1453,11 +1629,43 @@ function renderEventDetail(id) {
         return;
     }
 
+    if (isPastEvent(event)) {
+        setAppContent(`
+            <div class="animate-[fadeIn_0.3s_ease-in-out] max-w-3xl mx-auto pt-8">
+                <div class="mb-6">
+                    <a href="#events" class="inline-flex items-center gap-2 text-primary-light hover:text-primary font-medium transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                        Volver a cartelera
+                    </a>
+                </div>
+                ${createInlineStatusCard(
+                    'Evento Finalizado',
+                    'Este evento ya pasó y no admite nuevas reservas. Explora la cartelera para elegir una función disponible.',
+                    { type: 'info', compact: false }
+                )}
+            </div>
+        `);
+        return;
+    }
+
     const bookedSeats = new Set();
     let selectedSeats = [];
     let seatSyncReady = !isServerRenderedSessionAvailable();
     setAppContent(createEventDetailHtml(event, createSeatMapHtml(bookedSeats)));
     updateEventDetailNotices(event.id, { pendingSync: isServerRenderedSessionAvailable() });
+
+    function updateSeatAccessibility(button, state) {
+        const seatId = button.data('seat');
+        const statusLabel = state === 'booked'
+            ? 'ocupado'
+            : state === 'selected'
+                ? 'seleccionado'
+                : 'disponible';
+
+        button.attr('aria-label', `Asiento ${seatId} ${statusLabel}`);
+        button.attr('aria-pressed', String(state === 'selected'));
+        button.attr('aria-disabled', String(state === 'booked'));
+    }
 
     function markSeatAsBooked(seatId) {
         bookedSeats.add(seatId);
@@ -1470,6 +1678,7 @@ function renderEventDetail(id) {
             .prop('disabled', true)
             .removeClass('available selected bg-primary text-white scale-110 shadow-[0_0_12px_rgba(177,32,36,0.6)] z-10 relative bg-white/20 text-white/70 hover:bg-primary/80 hover:text-white cursor-pointer')
             .addClass('bg-white/10 text-white/20 cursor-not-allowed booked');
+        updateSeatAccessibility(seatButton, 'booked');
     }
 
     async function syncBookedSeats() {
@@ -1490,11 +1699,13 @@ function renderEventDetail(id) {
                 .removeClass('selected bg-primary text-white scale-110 shadow-[0_0_12px_rgba(177,32,36,0.6)]')
                 .addClass('bg-white/20 text-white/70 hover:bg-primary/80 hover:text-white');
             selectedSeats = selectedSeats.filter(id => id !== seatId);
+            updateSeatAccessibility($(this), 'available');
         } else {
             $(this)
                 .removeClass('bg-white/20 text-white/70 hover:bg-primary/80 hover:text-white')
                 .addClass('selected bg-primary text-white scale-110 shadow-[0_0_12px_rgba(177,32,36,0.6)] z-10 relative');
             selectedSeats.push(seatId);
+            updateSeatAccessibility($(this), 'selected');
         }
         updateBookingSummary();
     });
@@ -1503,12 +1714,14 @@ function renderEventDetail(id) {
         const summaryDiv = $('#booking-summary');
         const btnComprar = $('#btn-comprar');
         const seatNotice = getSeatAvailabilityNotice(event.id);
+        const totalAmount = selectedSeats.length * Number(event.priceValue || 0);
         const syncMessage = !seatSyncReady
             ? `<span class="block mt-2 ${seatNotice.type === 'error' ? 'text-red-300' : 'text-white/50'}">${seatNotice.message || 'Estamos verificando la disponibilidad real de los asientos.'}</span>`
             : '';
 
-        summaryDiv.html(`${createBookingSummaryHtml(selectedSeats)}${syncMessage}`);
+        summaryDiv.html(`${createBookingSummaryHtml(selectedSeats, totalAmount)}${syncMessage}`);
         btnComprar.prop('disabled', selectedSeats.length === 0 || !seatSyncReady);
+        btnComprar.attr('aria-disabled', String(selectedSeats.length === 0 || !seatSyncReady));
     }
 
     $('#btn-comprar').on('click', async function() {
@@ -1602,15 +1815,15 @@ function renderLogin() {
                     ${isRegister ? `
                     <div>
                         <label class="block text-sm font-medium text-white/70 mb-1.5" for="name">Nombre Completo</label>
-                        <input type="text" id="name" class="w-full bg-black/40 border border-white/20 rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-white/30" required placeholder="Juan Pérez">
+                        <input type="text" id="name" autocomplete="name" class="w-full bg-black/40 border border-white/20 rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-white/30" required placeholder="Juan Pérez">
                     </div>` : ''}
                     <div>
                         <label class="block text-sm font-medium text-white/70 mb-1.5" for="email">Correo Electrónico</label>
-                        <input type="email" id="email" class="w-full bg-black/40 border border-white/20 rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-white/30" required placeholder="tu@correo.com">
+                        <input type="email" id="email" autocomplete="email" inputmode="email" class="w-full bg-black/40 border border-white/20 rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-white/30" required placeholder="tu@correo.com">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-white/70 mb-1.5" for="password">Contraseña</label>
-                        <input type="password" id="password" class="w-full bg-black/40 border border-white/20 rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-white/30" required placeholder="••••••••">
+                        <input type="password" id="password" autocomplete="${isRegister ? 'new-password' : 'current-password'}" class="w-full bg-black/40 border border-white/20 rounded-md px-4 py-2.5 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-white/30" required placeholder="••••••••">
                     </div>
                     <div class="pt-4">
                         <button type="submit" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-3 px-4 rounded-md transition-colors shadow-lg">${btnText}</button>
@@ -1710,11 +1923,11 @@ function createEventCard(event) {
 
     return `
         <div class="glass-card rounded-2xl overflow-hidden transition-transform duration-300 hover:-translate-y-2 hover:shadow-[0_15px_30px_rgba(177,32,36,0.15)] hover:border-primary/40 flex flex-col h-full group">
-            <a href="${safeEventHref}" class="block relative overflow-hidden shrink-0">
+            <a href="${safeEventHref}" class="block relative overflow-hidden shrink-0" aria-label="Ver detalles de ${safeTitle}">
                 <div class="absolute inset-0 bg-primary/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 flex items-center justify-center">
                     <span class="bg-black/70 text-white px-4 py-2 rounded-full font-medium tracking-wide backdrop-blur-sm transform scale-90 group-hover:scale-100 transition-transform">Ver Detalles</span>
                 </div>
-                <img src="${safeImage}" alt="${safeTitle}" class="w-full h-48 sm:h-56 object-cover bg-neutral-900 transition-transform duration-500 group-hover:scale-105" onerror="this.src='${localFallbackImage}'">
+                <img src="${safeImage}" alt="${safeTitle}" class="w-full h-48 sm:h-56 object-cover bg-neutral-900 transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async" onerror="this.src='${localFallbackImage}'">
             </a>
             <div class="p-6 flex flex-col flex-1">
                 <p class="text-primary-light font-medium text-sm flex items-center gap-2 mb-3">

@@ -1,51 +1,50 @@
 # Backend Django
 
-Backend base del sistema de reserva de boletos del Teatro Nacional Eduardo Brito.
+Backend principal del sistema de reserva de boletos del Teatro Nacional Eduardo Brito. Esta carpeta contiene la aplicacion Django que sirve la SPA oficial, expone la API REST y gestiona sesiones, eventos y reservas.
 
-## Incluye
+## Responsabilidades
 
-- Modelos para `Evento` y `Reserva`
-- Usuarios y sesion usando Django Auth
-- API JSON tipo REST para eventos y reservas
-- Autorizacion por roles para usuarios autenticados y staff
-- Vista HTML basica para revisar la cartelera
-- Admin de Django para gestionar contenido
+- servir la SPA principal desde `/`
+- exponer la API JSON de configuracion, eventos, autenticacion y reservas
+- manejar sesiones y permisos por rol
+- servir los assets compilados del frontend desde `static/dist/`
 
-## Comandos
+## Comandos principales
 
 ```powershell
 cd teatro_backend
 ..\venv\Scripts\python.exe manage.py migrate
 ..\venv\Scripts\python.exe manage.py createsuperuser
 ..\venv\Scripts\python.exe manage.py runserver
+..\venv\Scripts\python.exe manage.py test api
 ```
 
-## Rutas
+## Flujo recomendado
 
-- `/` SPA principal servida por Django
+```powershell
+cd ..
+npm run build
+cd teatro_backend
+..\venv\Scripts\python.exe manage.py runserver
+```
+
+## Rutas operativas
+
+- `/` SPA oficial servida por Django
 - `/backend/` resumen tecnico del backend
-- `/api/config/` configuracion del frontend
-- `/eventos/` cartelera HTML
-- `/api/eventos/` cartelera JSON
-- `/api/eventos/<id>/` detalle y gestion REST de eventos
-- `/api/auth/register/` registro con sesion
-- `/api/auth/login/` inicio de sesion
+- `/eventos/` cartelera HTML auxiliar
+- `/api/config/` configuracion consumida por la SPA
+- `/api/eventos/` lista REST de eventos
+- `/api/auth/register/` registro
+- `/api/auth/login/` login
 - `/api/auth/session/` sesion actual
-- `/api/auth/logout/` cierre de sesion
-- `/api/reservas/` reservas del usuario autenticado y asientos ocupados por evento
-- `/api/reservas/<codigo_reserva>/` detalle y cambio de estado de reservas
-- `/admin/` panel administrativo
+- `/api/auth/logout/` logout
+- `/api/reservas/` listado y creacion de reservas
+- `/api/reservas/<codigo_reserva>/` detalle y actualizacion de reservas
+- `/papasfritas/` panel administrativo
 
-## Roles
+## Documentacion relacionada
 
-- Publico: consulta eventos publicados y disponibilidad de asientos por evento.
-- Usuario autenticado: registra sesion, crea reservas y consulta o cancela sus propias reservas.
-- Staff/Admin: administra eventos y puede consultar o actualizar reservas de cualquier usuario.
-
-## Nota de base de datos
-
-En esta entrega se usa SQLite. No se configurara MySQL por ahora.
-
-## Nota de uso
-
-Para probar login, sesion y reservas, usa la app desde `http://127.0.0.1:8000/`. Abrir `index.html` directamente solo sirve para revisar la interfaz y la cartelera de demostracion.
+- [Integracion y optimizacion de Semana 5](../docs/semana5-integracion-optimizacion.md)
+- [QA y demostracion de Semana 5](../docs/qa-demo-semana5.md)
+- [Arquitectura y base de datos](../docs/arquitectura_bd.md)

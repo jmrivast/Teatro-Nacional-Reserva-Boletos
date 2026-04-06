@@ -4,89 +4,55 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teatro Nacional Eduardo Brito</title>
-    
-    <!-- Custom Base CSS -->
-    <link rel="stylesheet" href="css/styles.css">
-    
-    <!-- Tailwind CSS (CDN for Rapid Prototyping) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        primary: {
-                            DEFAULT: '#b12024',
-                            light: '#d62d31',
-                            dark: '#8c191c'
-                        },
-                        danger: '#f87171'
-                    }
-                }
-            }
-        }
-    </script>
+    <meta name="description" content="Demo secundaria del frontend del Teatro Nacional Eduardo Brito compilada con Webpack.">
+    <link rel="stylesheet" href="teatro_backend/static/dist/app.bundle.css">
 </head>
 <body class="flex flex-col min-h-screen" data-fallback-image="teatro nacional app.png">
-    <!-- Global Background Elements -->
+    <a href="#app-content" class="skip-link">Saltar al contenido principal</a>
+    <div id="app-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
     <div class="bg-setup"></div>
     <div class="bg-overlay"></div>
 
-    <!-- Navigation Bar -->
     <header class="fixed top-0 w-full z-50 bg-black/50 backdrop-blur-md border-b border-white/10 transition-all">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex justify-between items-center">
-            
-            <!-- Logo -->
             <a href="#home" class="flex items-center gap-3 shrink-0">
                 <img src="LOGO-TNEB-Horizontal_TNEB-Horizontal-ROJO-1.png" alt="Teatro Nacional Eduardo Brito" class="w-auto h-[125px] object-contain">
             </a>
 
-            <!-- Desktop Menu -->
-            <nav class="hidden md:flex items-center gap-6" id="desktop-nav">
+            <nav class="hidden md:flex items-center gap-6" id="desktop-nav" aria-label="Navegacion principal">
                 <a href="#home" class="text-sm font-medium text-white/80 hover:text-primary-light transition-colors">Inicio</a>
                 <a href="#events" class="text-sm font-medium text-white/80 hover:text-primary-light transition-colors">Cartelera</a>
                 
                 <div id="auth-actions" class="flex items-center gap-4 pl-6 border-l border-white/20">
-                    <!-- Auth Desktop actions injected via JS -->
                 </div>
             </nav>
 
-            <!-- Mobile Menu Toggle Button -->
-            <button class="md:hidden text-white hover:text-primary-light p-2" id="mobile-menu-btn" aria-label="Abrir Menú">
+            <button class="md:hidden text-white hover:text-primary-light p-2" id="mobile-menu-btn" aria-label="Abrir menu principal" aria-controls="mobile-nav" aria-expanded="false">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
                 </svg>
             </button>
         </div>
 
-        <!-- Mobile Menu Panel -->
-        <div class="md:hidden hidden bg-black/95 border-b border-white/10 absolute w-full left-0 top-20 shadow-2xl" id="mobile-nav">
+        <div class="md:hidden hidden bg-black/95 border-b border-white/10 absolute w-full left-0 top-20 shadow-2xl" id="mobile-nav" role="navigation" aria-hidden="true" aria-label="Navegacion movil">
             <div class="px-4 pt-2 pb-6 space-y-4">
                 <a href="#home" class="block text-base font-medium text-white/80 hover:text-primary-light mobile-link">Inicio</a>
                 <a href="#events" class="block text-base font-medium text-white/80 hover:text-primary-light mobile-link">Cartelera</a>
                 
                 <div id="mobile-auth-actions" class="pt-4 border-t border-white/20 flex flex-col gap-3">
-                     <!-- Auth Mobile actions injected via JS -->
                 </div>
             </div>
         </div>
     </header>
 
-    <!-- Main Content Container -->
-    <main id="app-content" class="flex-1 relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-20 pb-32 md:pb-8">
-        <!-- JS rendered content -->
-    </main>
+    <main id="app-content" tabindex="-1" aria-busy="true" class="flex-1 relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 mt-20 pb-32 md:pb-8"></main>
 
-    <!-- Footer -->
     <footer class="relative z-0 bg-black/80 border-t border-white/10 py-8 text-center text-white/50 text-sm mt-auto">
         <p>&copy; <span id="current-year"></span> Teatro Nacional Eduardo Brito. Todos los derechos reservados.</p>
     </footer>
 
-    <!-- jQuery and App Logic -->
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="js/app.js"></script>
-    <script>
+    <script src="teatro_backend/static/dist/app.bundle.js" defer></script>
+    <script defer>
         document.getElementById('current-year').textContent = new Date().getFullYear();
     </script>
 </body>
