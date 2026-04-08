@@ -10,7 +10,7 @@ body {
   line-height: 1.5;
 }
 
-/* Background Image rendering */
+
 .bg-setup {
   position: fixed;
   inset: 0;
@@ -30,7 +30,7 @@ body {
   -webkit-backdrop-filter: blur(4px);
 }
 
-/* Glassmorphism Effect for Cards and Panels */
+
 .glass-card {
   background: rgba(255, 255, 255, 0.05); /* very subtle card background */
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -89,7 +89,7 @@ a[aria-current="page"] {
   color: #d62d31;
 }
 
-/* Page Transitons */
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -99,7 +99,6 @@ a[aria-current="page"] {
   animation: fadeIn 0.3s ease-in-out forwards;
 }
 
-/* Custom Scrollbar for horizontal content like SeatMap */
 .custom-scrollbar::-webkit-scrollbar {
   height: 8px;
 }

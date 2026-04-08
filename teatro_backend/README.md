@@ -45,6 +45,4 @@ cd teatro_backend
 
 ## Documentacion relacionada
 
-- [Integracion y optimizacion de Semana 5](../docs/semana5-integracion-optimizacion.md)
-- [QA y demostracion de Semana 5](../docs/qa-demo-semana5.md)
 - [Arquitectura y base de datos](../docs/arquitectura_bd.md)

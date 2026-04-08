@@ -551,7 +551,7 @@ function normalizeImageUrl(value, fallback = localFallbackImage) {
             return parsed.toString();
         }
     } catch (error) {
-        // Si la URL no es valida, usamos la imagen segura de respaldo.
+       
     }
 
     return fallbackValue;
@@ -682,7 +682,7 @@ async function loadAppConfig() {
             appConfig = normalizeAppConfig(payload);
             return;
         } catch (error) {
-            // Si el backend no responde, mantenemos la configuracion local.
+            
         }
     }
 
@@ -775,7 +775,7 @@ async function loadEvents() {
                 return;
             }
         } catch (error) {
-            // Si el backend no está disponible, usamos los datos de demostración.
+            
         }
     }
 
@@ -816,7 +816,7 @@ async function loadReservations() {
                 return payload.reservas.map((reservation) => normalizeReservation(reservation));
             }
         } catch (error) {
-            // Si el backend no responde, dejamos el dashboard vacio.
+            
         }
     }
 
@@ -894,7 +894,7 @@ async function loadSessionUser() {
                 return normalizeUser(payload.usuario);
             }
         } catch (error) {
-            // Si la sesion no puede consultarse, seguimos como invitado.
+            
         }
     }
 
@@ -966,7 +966,7 @@ async function logoutRequest() {
                 return;
             }
         } catch (error) {
-            // Si el backend no responde, limpiamos la sesion local igualmente.
+            
         }
     }
 }
@@ -996,7 +996,7 @@ async function loadBookedSeatsForEvent(eventId) {
                 return payload.asientos_reservados;
             }
         } catch (error) {
-            // Si el backend no responde, dejamos el mapa sin ocupacion remota.
+            
         }
     }
 
@@ -1575,7 +1575,7 @@ function createDashboardHtml(reservationsHtml) {
     `;
 }
 
-// ----- PAGES ----- //
+
 
 function renderHome() {
     const eventsNoticeHtml = getIntegrationNoticeHtml('events', { compact: false });
@@ -1689,7 +1689,7 @@ function renderEventDetail(id) {
         updateBookingSummary();
     }
 
-    // Dynamic Binding for Seats interaction
+    
     $('.seat-btn.available').on('click', function() {
         if ($(this).hasClass('booked') || $(this).prop('disabled')) return;
         const seatId = $(this).data('seat');
@@ -1912,7 +1912,7 @@ function renderDashboard() {
     });
 }
 
-// Helpers
+
 function createEventCard(event) {
     const safeEventHref = `#event-detail/${safeHashSegment(event.id)}`;
     const safeImage = sanitizeImageUrl(event.image);

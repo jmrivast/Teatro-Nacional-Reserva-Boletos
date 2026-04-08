@@ -6,7 +6,7 @@ El proyecto sigue una arquitectura cliente-servidor:
 
 - El cliente es la SPA construida con HTML, CSS, JavaScript y jQuery.
 - El servidor es Django, que procesa solicitudes, administra usuarios y expone datos.
-- La base de datos es SQLite, integrada con Django en esta entrega.
+- La base de datos es SQLite, integrada con Django.
 
 Flujo general:
 
@@ -70,7 +70,7 @@ Campos clave:
 - `is_staff`
 - `is_superuser`
 
-Roles propuestos:
+Roles:
 
 - Usuario normal: puede registrarse, iniciar sesion y reservar.
 - Administrador: `is_staff=True`, puede entrar al admin y gestionar informacion.
@@ -121,16 +121,4 @@ Relaciones en Django:
 - Un evento puede tener muchas reservas.
 - Cada reserva pertenece a un solo usuario y a un solo evento.
 
-## Decisiones tecnicas de esta entrega
 
-- SQLite en lugar de MySQL para reducir complejidad de instalacion.
-- API simple para listar eventos y alimentar el frontend.
-- Panel admin de Django como base del rol administrativo.
-- Campo `asientos` como texto en esta fase; en una fase futura puede normalizarse a una tabla `Asiento` si se necesita control asiento por asiento.
-
-## Proxima evolucion recomendada
-
-- Implementar registro e inicio de sesion reales con Django Auth.
-- Persistir reservas desde el frontend.
-- Crear endpoints para reservas, perfil y recuperacion de contrasena.
-- Normalizar asientos en una entidad separada si el mapa visual pasa a ser transaccional.

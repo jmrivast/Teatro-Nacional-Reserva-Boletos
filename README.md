@@ -1,21 +1,8 @@
 # Teatro Nacional Eduardo Brito - Reserva de Boletos
 
-Proyecto academico de una aplicacion web para consultar cartelera, autenticarse y reservar boletos del Teatro Nacional Eduardo Brito. La version oficial funciona como una SPA servida por Django en `/`, con backend REST, sesion basada en cookies y assets compilados con Webpack.
+Aplicacion web para consultar cartelera, autenticarse y reservar boletos del Teatro Nacional Eduardo Brito. Funciona como una SPA servida por Django en `/`, con backend REST, sesion basada en cookies y assets compilados con Webpack.
 
-## Estado del proyecto
-
-- Semana 4:
-  - API REST para `eventos`, `auth` y `reservas`
-  - autenticacion con registro, login, sesion y logout
-  - autorizacion por roles para publico, usuario autenticado y staff/admin
-  - protecciones base contra XSS y CSRF
-- Semana 5:
-  - integracion completa frontend + backend sobre Django
-  - pipeline de build con Webpack para compilar JS y CSS
-  - mejoras de accesibilidad y rendimiento
-  - documentacion tecnica y guia de demostracion
-
-## Arquitectura resumida
+## Arquitectura
 
 - Frontend:
   - SPA en JavaScript y jQuery
@@ -54,7 +41,7 @@ Proyecto academico de una aplicacion web para consultar cartelera, autenticarse 
     `-- manage.py
 ```
 
-## Tecnologias y palabras clave
+## Tecnologias
 
 - Django
 - API REST
@@ -65,9 +52,6 @@ Proyecto academico de una aplicacion web para consultar cartelera, autenticarse 
 - SQLite
 - CSRF
 - XSS
-- Accesibilidad web
-- Rendimiento frontend
-- Integracion frontend backend
 
 ## Como ejecutar el proyecto
 
@@ -138,14 +122,6 @@ cd teatro_backend
 - `http://127.0.0.1:8000/papasfritas/`
   - panel administrativo de Django
 
-## Frontend oficial y demo secundaria
-
-- Oficial:
-  - usar siempre `http://127.0.0.1:8000/`
-  - aqui funcionan autenticacion, sesion, CSRF y reservas reales
-- Secundario:
-  - `index.html` en la raiz queda como demo secundaria del frontend compilado
-  - sirve para revisar la interfaz, no como entorno principal de pruebas
 
 ## Build del frontend
 
@@ -154,19 +130,6 @@ Webpack compila el frontend desde `frontend/src/index.js` y genera:
 - `teatro_backend/static/dist/app.bundle.js`
 - `teatro_backend/static/dist/app.bundle.css`
 
-El archivo de entrada:
-
-- expone `jQuery` de forma global para la SPA existente
-- importa `css/styles.css`
-- importa `js/app.js`
-- procesa Tailwind con PostCSS
-
-Comandos:
-
-```powershell
-npm run build
-npm run watch
-```
 
 ## Seguridad aplicada
 
@@ -191,9 +154,7 @@ npm run watch
 ## Documentacion tecnica
 
 - [docs/arquitectura_bd.md](docs/arquitectura_bd.md)
-- [docs/diagrama-er.md](docs/diagrama-er.md)
-- [docs/semana5-integracion-optimizacion.md](docs/semana5-integracion-optimizacion.md)
-- [docs/qa-demo-semana5.md](docs/qa-demo-semana5.md)
+- [teatro_backend/README.md](teatro_backend/README.md)
 
 ## Validacion rapida
 
@@ -208,9 +169,3 @@ Build frontend:
 ```powershell
 npm run build
 ```
-
-## Limitaciones actuales
-
-- la SPA principal sigue en un solo archivo `js/app.js`, aunque ahora ya compila dentro de un pipeline formal
-- SQLite se usa para desarrollo y entrega academica
-- la demo de raiz no reemplaza a la version oficial servida por Django
